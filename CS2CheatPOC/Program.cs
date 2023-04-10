@@ -37,7 +37,7 @@ class CheatClass
             if (players[i].XPos == 0 && players[i].YPos == 0 && players[i].ZPos == 0)
                 continue;
 
-            if (players[i].TeamID != player.TeamID && players[i].Health != 0)
+            if (players[i].TeamID != player.TeamID && players[i].Health != 0 && players[i].m_bSpotted == 2)
             {
                 var distance = DistanceTo(player, players[i]);
                 if (distance < minDistance)

@@ -13,6 +13,8 @@ struct Player
     public float pitch; //0x011C
     [FieldOffset(288)]
     public float yaw; //0x0120
+    [FieldOffset(338)]
+    public byte m_bSpotted; //0x152
     [FieldOffset(352)]
     public int Health; //0x0160
     [FieldOffset(364)]
