@@ -1,7 +1,7 @@
 ﻿using System.Runtime.InteropServices;
 
 [StructLayout(LayoutKind.Explicit)]
-struct Player
+public struct Player
 {
     [FieldOffset(272)]
     public float XPos; //0x0110
