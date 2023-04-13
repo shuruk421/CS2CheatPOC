@@ -12,8 +12,8 @@ namespace CS2CheatPOC
         {
             if (e.Data == "GET")
             {
-                var rectangles = CheatClass.GetRectangles();
-                Send(JsonConvert.SerializeObject(rectangles));
+                var lines = CheatClass.GetLines();
+                Send(JsonConvert.SerializeObject(lines));
             }
         }
     }

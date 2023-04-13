@@ -22,9 +22,18 @@ public class CheatClass
         return new Vector2(pitch, yaw);
     }
 
-    static Vector2 PlayersToAngle(Player player, Player target)
+    static Vector2 PlayersToAngle(int processHandle, Player player, Player target)
     {
-        return WorldToAngle(new Vector3(player.XPos, player.YPos, player.ZPos), new Vector3(target.XPos, target.YPos, target.ZPos));
+        int headBoneindex = 6;
+        int boneCount = 116;
+
+        CSkeletonInstance playerSkeletonInstance = ReadStruct<CSkeletonInstance>(processHandle, player.m_pGameSceneNode);
+        CBoneData[] playerBoneArray = ReadStructArray<CBoneData>(processHandle, playerSkeletonInstance.m_modelState.m_boneArray, boneCount);
+
+        CSkeletonInstance targetSkeletonInstance = ReadStruct<CSkeletonInstance>(processHandle, target.m_pGameSceneNode);
+        CBoneData[] targetBoneArray = ReadStructArray<CBoneData>(processHandle, targetSkeletonInstance.m_modelState.m_boneArray, boneCount);
+
+        return WorldToAngle(playerBoneArray[headBoneindex].Location, targetBoneArray[headBoneindex].Location);
     }
 
     static float DistanceTo(Player player, Player target)
@@ -42,7 +51,7 @@ public class CheatClass
             if (players[i].XPos == 0 && players[i].YPos == 0 && players[i].ZPos == 0)
                 continue;
 
-            if (players[i].TeamID != player.TeamID && players[i].Health != 0 && players[i].m_bSpotted == 2)
+            if (players[i].m_iTeamNum != player.m_iTeamNum && players[i].m_iHealth != 0)
             {
                 var distance = DistanceTo(player, players[i]);
                 if (distance < minDistance)
@@ -82,15 +91,15 @@ public class CheatClass
         return screen;
     }
 
-    public static List<Rectangle> GetRectangles()
+    public static List<Line> GetLines()
     {
-        return rectangles;
+        return lines;
     }
 
-    static void UpdateRectangles(int processHandle, long viewMatrixAddress, Rect window, List<Player> players)
+    static void UpdateLines(int processHandle, long viewMatrixAddress, Rect window, List<Player> players)
     {
-        List<Player> playerList = players.Skip(1).Where(P => P.TeamID != players.First().TeamID).ToList();
-        var newRectangles = new List<Rectangle>();
+        List<Player> playerList = players.Skip(1).Where(P => P.m_iTeamNum != players.First().m_iTeamNum).ToList();
+        var newLines = new List<Line>();
         byte[] viewMatrix = new byte[64];
         int bytesRead = 0;
         ReadProcessMemory(processHandle, viewMatrixAddress, viewMatrix, 64, ref bytesRead);
@@ -103,37 +112,107 @@ public class CheatClass
                 Height = window.Bottom - window.Top,
                 Width = window.Right - window.Left
             };
-            var playerCorner1 = new Vector3(player.XPos - 16, player.YPos - 16, player.ZPos + 72);
-            var playerCorner2 = new Vector3(player.XPos + 16, player.YPos + 16, player.ZPos);
-            var pos1 = WorldToScreen(viewMatrix, playerCorner1, rect);
-            var pos2 = WorldToScreen(viewMatrix, playerCorner2, rect);
-            if (pos1 != null && pos2 != null)
+
+            List<Vector3> playerCorners = new List<Vector3>()
             {
-                int x = (int) Math.Min(pos1.Value.X, pos2.Value.X);
-                int y = (int) Math.Min(pos1.Value.Y, pos2.Value.Y);
-                int width = (int) Math.Max(pos1.Value.X, pos2.Value.X) - x;
-                int height = (int) Math.Max(pos1.Value.Y, pos2.Value.Y) - y;
-                newRectangles.Add(new Rectangle() { X = x, Y = y, Width = width, Height = height });
+                new Vector3(player.XPos - 16, player.YPos - 16, player.ZPos + 72),  //upper corners
+                new Vector3(player.XPos - 16, player.YPos + 16, player.ZPos + 72),
+                new Vector3(player.XPos + 16, player.YPos + 16, player.ZPos + 72),
+                new Vector3(player.XPos + 16, player.YPos - 16, player.ZPos + 72),
+                new Vector3(player.XPos - 16, player.YPos - 16, player.ZPos),       //bottom corners
+                new Vector3(player.XPos - 16, player.YPos + 16, player.ZPos),
+                new Vector3(player.XPos + 16, player.YPos + 16, player.ZPos),
+                new Vector3(player.XPos + 16, player.YPos - 16, player.ZPos)
+            };
+
+            List<Vector2?> positions = new List<Vector2?>();
+            positions = playerCorners.Select(C => WorldToScreen(viewMatrix, C, rect)).ToList();
+
+            if (!positions.Any(P => P == null))
+            {
+                //top four
+                for (int i = 0; i < 3; i++)
+                {
+                    newLines.Add(new Line()
+                    {
+                        X1 = (int)positions[i].Value.X,
+                        Y1 = (int)positions[i].Value.Y,
+                        X2 = (int)positions[i+1].Value.X,
+                        Y2 = (int)positions[i+1].Value.Y
+                    });
+                }
+                newLines.Add(new Line()
+                {
+                    X1 = (int)positions[3].Value.X,
+                    Y1 = (int)positions[3].Value.Y,
+                    X2 = (int)positions[0].Value.X,
+                    Y2 = (int)positions[0].Value.Y
+                });
+
+
+                //bottom four
+                for (int i = 4; i < 7; i++)
+                {
+                    newLines.Add(new Line()
+                    {
+                        X1 = (int)positions[i].Value.X,
+                        Y1 = (int)positions[i].Value.Y,
+                        X2 = (int)positions[i + 1].Value.X,
+                        Y2 = (int)positions[i + 1].Value.Y
+                    });
+                }
+                newLines.Add(new Line()
+                {
+                    X1 = (int)positions[7].Value.X,
+                    Y1 = (int)positions[7].Value.Y,
+                    X2 = (int)positions[4].Value.X,
+                    Y2 = (int)positions[4].Value.Y
+                });
+
+                //connections
+                for (int i = 0; i < 4; i++)
+                {
+                    newLines.Add(new Line()
+                    {
+                        X1 = (int)positions[i].Value.X,
+                        Y1 = (int)positions[i].Value.Y,
+                        X2 = (int)positions[i + 4].Value.X,
+                        Y2 = (int)positions[i + 4].Value.Y
+                    });
+                }
             }
         }
-        rectangles = newRectangles;
+        lines = newLines;
+    }
+
+    public static Player[] ReadPlayers(int processHandle, long EntitiesList, int playerCount)
+    {
+        Player[] players = new Player[playerCount];
+        for (int i = 0; i < playerCount + 1; i++)
+        {
+            long EntAdr = ReadPointer(processHandle, EntitiesList + 0x8 * i);
+            if (EntAdr == 0)
+                break;
+            players[i] = ReadStruct<Player>(processHandle, EntAdr);
+        }
+        return players;
     }
 
     private static readonly int PROCESS_VM_READ = 0x0010;
     private static readonly int PROCESS_VM_WRITE = 0x0020;
     private static readonly int PROCESS_VM_OPERATION = 0x0008;
-    private static readonly int[] playerArrayOffsets = { 0x1472300, 0x120, 0x0, 0x348 };
+    private static readonly int playerArrayOffset = 0x14A2A48;
     private static readonly int pitchOffset = 0x1635694;
     private static readonly int yawOffset = pitchOffset + 0x4;
     private static readonly int viewMatrixOffset = 0x1627DD0;
-    private static List<Rectangle> rectangles = new List<Rectangle>();
+    private static List<Line> lines = new List<Line>();
     static void Main(string[] args)
     {
         bool espOn = true;
         bool aimbotOn = true;
-        bool fullscreen = true;
+        bool fullscreen = false;
 
-        var wssv = new WebSocketServer(8080);
+        var wssv = new WebSocketServer(8081);
 
         wssv.AddWebSocketService<ESPBehaviour>("/esp");
         wssv.Start();
@@ -142,26 +221,25 @@ public class CheatClass
         Console.WriteLine("Starting");
         var process = Process.GetProcessesByName(procName)[0];
         var processHandle = (int)OpenProcess(PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_VM_OPERATION, false, process.Id);
-        var windowHandle = process.MainWindowHandle;
+        //var windowHandle = process.MainWindowHandle;
 
         Rect window = new Rect();
-        if(!fullscreen)
-            GetWindowRect(windowHandle, ref window);
+        if (!fullscreen)
+            //GetWindowRect(windowHandle, ref window);
+            window = new Rect() { Top = 0, Left = 0, Bottom = 720, Right = 1280 };
         else
-            window = new Rect() { Top= 0, Left= 0, Bottom= 1080, Right= 1920};
+            window = new Rect() { Top = 0, Left = 0, Bottom = 1080, Right = 1920 };
 
         long clientDLL = GetModuleBaseAddress(process, "client.dll");
         Console.WriteLine("client.dll: {0:X}", clientDLL);
 
-
-        long playerArray = GetAddressFromOffsets(processHandle, clientDLL, playerArrayOffsets);
         int playerCount = 30;
         float maxDistance = 2000f;
         while (!(Console.KeyAvailable && Console.ReadKey(true).Key == ConsoleKey.Escape))
         {
-            Player[] players = ReadStructArray<Player>(processHandle, playerArray, playerCount);
+            Player[] players = ReadPlayers(processHandle, clientDLL + playerArrayOffset, playerCount);
             if (espOn)
-                UpdateRectangles(processHandle, clientDLL + viewMatrixOffset, window,
+                UpdateLines(processHandle, clientDLL + viewMatrixOffset, window,
                     players.Where(P => P.XPos != 0 || P.YPos != 0 || P.ZPos != 0).ToList());
             if (aimbotOn)
             {
@@ -170,12 +248,12 @@ public class CheatClass
                 if (closestEnemy != null)
                     if (DistanceTo(localPlayer, (Player)closestEnemy) <= maxDistance)
                     {
-                        Vector2 aimAngle = PlayersToAngle(localPlayer, (Player)closestEnemy);
+                        Vector2 aimAngle = PlayersToAngle(processHandle, localPlayer, (Player)closestEnemy);
                         WriteFloat(processHandle, clientDLL + pitchOffset, aimAngle.X);
                         WriteFloat(processHandle, clientDLL + yawOffset, aimAngle.Y);
                     }
             }
-            Thread.Sleep(3);
+            Thread.Sleep(1);
         }
         CloseHandle(processHandle);
         wssv.Stop();
